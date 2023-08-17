@@ -23,7 +23,6 @@ void main() {
 class PasshareMain extends StatelessWidget {
   const PasshareMain({super.key});
 
-  // This widget is the root of your application.
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
@@ -69,7 +68,6 @@ class _LandingPageState extends State<LandingPage> {
         .getMediaStream()
         .listen((List<SharedFile> value) {
       if (value.isNotEmpty && value[0].type == SharedMediaType.TEXT) {
-        print(value[0].value);
         _passwordInput.text = value[0].value!;
         _uploadPassword();
       }
@@ -102,9 +100,49 @@ class _LandingPageState extends State<LandingPage> {
     return res.buffer;
   }
 
+  void _showDialog(Widget content, List actions) {
+    if (Platform.isIOS) {
+      showCupertinoDialog(
+        context: context,
+        builder: (ctx) => CupertinoAlertDialog(
+          content: content,
+          actions: [
+            for (final action in actions)
+              CupertinoDialogAction(
+                onPressed: () {
+                  action['onPressed'](ctx);
+                },
+                child: Text(action['text']),
+              )
+          ],
+        ),
+      );
+    } else {
+      showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          content: content,
+          actions: [
+            for (final action in actions)
+              ElevatedButton(
+                onPressed: () {
+                  action['onPressed'](ctx);
+                },
+                child: Text(action['text']),
+              )
+          ],
+        ),
+      );
+    }
+  }
+
   void _uploadPassword() async {
     final pbkdf2 = FlutterPbkdf2(
-        macAlgorithm: Hmac.sha256(), bits: 256, iterations: 100000);
+      macAlgorithm: Hmac.sha256(),
+      bits: 256,
+      iterations: 100000,
+      fallback: Pbkdf2.hmacSha256(iterations: 100000, bits: 256),
+    );
 
     _encPassphrase = getRandomString();
     _pbkdf2Salt = getRandomBytes(16);
@@ -142,85 +180,79 @@ class _LandingPageState extends State<LandingPage> {
       return;
     }
 
-    final showDialogFunc = Platform.isIOS ? showCupertinoDialog : showDialog;
-
     if (resParsed != null) {
-      showDialogFunc(
-          context: context,
-          builder: (ctx) => AlertDialog(
-                content: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Text(
-                      "Success",
-                      style:
-                          TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                    ),
-                    const SizedBox(height: 20),
-                    Row(
-                      children: [
-                        const Text(
-                          "ID : ",
-                          style: TextStyle(fontWeight: FontWeight.bold),
-                        ),
-                        Container(
-                          padding: const EdgeInsets.all(5),
-                          child: SelectableText(
-                            style: GoogleFonts.sourceCodePro(
-                              fontSize: 18,
-                            ),
-                            resParsed['id'].toString(),
-                          ),
-                        ),
-                      ],
-                    ),
-                    Row(
-                      children: [
-                        const SelectableText("Passphrase : ",
-                            style: TextStyle(fontWeight: FontWeight.bold)),
-                        SelectableText(
-                          style: GoogleFonts.sourceCodePro(
-                            fontSize: 18,
-                          ),
-                          _encPassphrase!,
-                        )
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-                    const Text(
-                      "The password will be automatically deleted from the server after 90 seconds !",
-                      style: TextStyle(color: Colors.grey),
-                    )
-                  ],
-                ),
-                actions: [
-                  ElevatedButton(
-                      onPressed: () {
-                        Navigator.pop(ctx);
-                      },
-                      child: const Text('Okay'))
-                ],
-              ));
-    } else {
-      showDialogFunc(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          content: const Column(mainAxisSize: MainAxisSize.min, children: [
-            Text(
-              "Error",
+      _showDialog(
+        Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              "Success",
               style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
             ),
-            SizedBox(height: 20),
-            Text("An error occured while uploading the password"),
-          ]),
-          actions: [
-            ElevatedButton(
-                onPressed: () {
-                  Navigator.pop(ctx);
-                },
-                child: const Text('Okay'))
+            const SizedBox(height: 20),
+            Row(
+              children: [
+                const Text(
+                  "ID : ",
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+                Container(
+                  padding: const EdgeInsets.all(5),
+                  child: SelectableText(
+                    style: GoogleFonts.sourceCodePro(
+                      fontSize: 18,
+                    ),
+                    resParsed['id'].toString(),
+                  ),
+                ),
+              ],
+            ),
+            Row(
+              children: [
+                const SelectableText("Passphrase : ",
+                    style: TextStyle(fontWeight: FontWeight.bold)),
+                SelectableText(
+                  style: GoogleFonts.sourceCodePro(
+                    fontSize: 18,
+                  ),
+                  _encPassphrase!,
+                )
+              ],
+            ),
+            const SizedBox(height: 10),
+            const Text(
+              "The password will be automatically deleted from the server after 90 seconds !",
+              style: TextStyle(color: Colors.grey),
+            )
           ],
         ),
+        [
+          {
+            'onPressed': (ctx) {
+              Navigator.pop(ctx);
+            },
+            'text': 'Okay',
+          }
+        ],
+      );
+    } else {
+      _showDialog(
+        const Column(mainAxisSize: MainAxisSize.min, children: [
+          Text(
+            "Error",
+            style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+          ),
+          SizedBox(height: 20),
+          Text("An error occured while uploading the password"),
+        ]),
+        [
+          {
+            'onPressed': (ctx) {
+              Navigator.pop(ctx);
+            },
+            'text': 'Okay'
+          }
+        ],
       );
     }
   }
@@ -249,7 +281,11 @@ class _LandingPageState extends State<LandingPage> {
     if (_lastResponse != null) {
       try {
         final pbkdf2 = FlutterPbkdf2(
-            macAlgorithm: Hmac.sha256(), bits: 256, iterations: 100000);
+          macAlgorithm: Hmac.sha256(),
+          bits: 256,
+          iterations: 100000,
+          fallback: Pbkdf2.hmacSha256(iterations: 100000, bits: 256),
+        );
 
         // Calculate a hash that can be stored in the database
         final encKey = await pbkdf2.deriveKeyFromPassword(
@@ -285,69 +321,65 @@ class _LandingPageState extends State<LandingPage> {
       return;
     }
 
-    final showDialogFunc = Platform.isIOS ? showCupertinoDialog : showDialog;
-
     if (decryptedText != null && decryptedText.isNotEmpty) {
-      showDialogFunc(
-          context: context,
-          builder: (ctx) => AlertDialog(
-                content: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Text(
-                      "Success",
-                      style:
-                          TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                    ),
-                    const SizedBox(height: 20),
-                    Row(
-                      children: [
-                        const Text(
-                          "Password : ",
-                          style: TextStyle(fontWeight: FontWeight.bold),
-                        ),
-                        Container(
-                          padding: const EdgeInsets.all(5),
-                          child: SelectableText(
-                            style: GoogleFonts.sourceCodePro(
-                              fontSize: 18,
-                            ),
-                            decryptedText!,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-                actions: [
-                  ElevatedButton(
-                      onPressed: () {
-                        Clipboard.setData(ClipboardData(text: decryptedText!));
-                        Navigator.pop(ctx);
-                      },
-                      child: const Text('Copy'))
-                ],
-              ));
-    } else {
-      showDialogFunc(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          content: const Column(mainAxisSize: MainAxisSize.min, children: [
-            Text(
-              "Error",
+      _showDialog(
+        Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              "Success",
               style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
             ),
-            SizedBox(height: 20),
-            Text("An error occured while uploading the password"),
-          ]),
-          actions: [
-            ElevatedButton(
-                onPressed: () {
-                  Navigator.pop(ctx);
-                },
-                child: const Text('Okay'))
+            const SizedBox(height: 20),
+            Row(
+              children: [
+                const Text(
+                  "Password : ",
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+                Expanded(
+                  child: Container(
+                    padding: const EdgeInsets.all(5),
+                    child: SelectableText(
+                      style: GoogleFonts.sourceCodePro(
+                        fontSize: 18,
+                      ),
+                      decryptedText,
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ],
         ),
+        [
+          {
+            'onPressed': (ctx) {
+              Clipboard.setData(ClipboardData(text: decryptedText!));
+              Navigator.pop(ctx);
+            },
+            'text': 'Copy'
+          }
+        ],
+      );
+    } else {
+      _showDialog(
+        const Column(mainAxisSize: MainAxisSize.min, children: [
+          Text(
+            "Error",
+            style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+          ),
+          SizedBox(height: 20),
+          Text("An error occured while uploading the password"),
+        ]),
+        [
+          {
+            'onPressed': (ctx) {
+              Navigator.pop(ctx);
+            },
+            'text': 'Okay'
+          }
+        ],
       );
     }
   }
